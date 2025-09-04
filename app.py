@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
-from flask_socketio import SocketIO, emit
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 import os
@@ -10,12 +9,9 @@ from datetime import datetime
 import jwt
 from functools import wraps
 import requests
-import eventlet
-
-eventlet.monkey_patch()
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', '7801569c25acac3e91f706aa340e1aaa08d00fae1834c9a53cc59539864f55a6')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here-change-in-production')
 
 # Handle both SQLite and PostgreSQL database URLs
 database_url = os.environ.get('DATABASE_URL', 'sqlite:///civi_connect.db')
@@ -31,7 +27,6 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db = SQLAlchemy(app)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # Database Models
 class User(db.Model):
@@ -265,14 +260,6 @@ def create_issue(current_user):
         db.session.add(issue)
         db.session.commit()
         
-        # Emit real-time update
-        socketio.emit('new_issue', {
-            'issue_id': issue.id,
-            'title': issue.title,
-            'type': issue.issue_type,
-            'location': address
-        }, room='admin')
-        
         return jsonify({
             'message': 'Issue created successfully',
             'issue_id': issue.id
@@ -314,13 +301,6 @@ def update_issue(current_user, issue_id):
         db.session.add(update)
     
     db.session.commit()
-    
-    # Emit real-time update
-    socketio.emit('issue_updated', {
-        'issue_id': issue.id,
-        'status': new_status,
-        'updated_by': current_user.name
-    })
     
     return jsonify({'message': 'Issue updated successfully'})
 
@@ -399,28 +379,6 @@ def get_issue_updates(current_user, issue_id):
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
-# WebSocket events
-@socketio.on('connect')
-def on_connect():
-    print('Client connected')
-
-@socketio.on('disconnect')
-def on_disconnect():
-    print('Client disconnected')
-
-@socketio.on('join_admin')
-def on_join_admin(data):
-    # Verify admin token
-    try:
-        token = data.get('token')
-        if token:
-            user_data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
-            if user_data.get('role') == 'admin':
-                join_room('admin')
-                emit('joined_admin', {'status': 'success'})
-    except:
-        emit('joined_admin', {'status': 'error'})
-
 # Initialize database
 @app.before_first_request
 def create_tables():
@@ -433,4 +391,4 @@ def create_tables():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     debug = os.environ.get('FLASK_ENV') == 'development'
-    socketio.run(app, host='0.0.0.0', port=port, debug=debug)
+    app.run(host='0.0.0.0', port=port, debug=debug)
