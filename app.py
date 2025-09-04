@@ -10,10 +10,19 @@ from datetime import datetime
 import jwt
 from functools import wraps
 import requests
+import eventlet
+
+eventlet.monkey_patch()
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'your-secret-key-here'
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///civi_connect.db')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here-change-in-production')
+
+# Handle both SQLite and PostgreSQL database URLs
+database_url = os.environ.get('DATABASE_URL', 'sqlite:///civi_connect.db')
+if database_url and database_url.startswith('postgres://'):
+    database_url = database_url.replace('postgres://', 'postgresql://', 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = 'uploads'
 
@@ -22,10 +31,11 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 db = SQLAlchemy(app)
 CORS(app)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # Database Models
 class User(db.Model):
+    __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
     email = db.Column(db.String(100), unique=True, nullable=False)
@@ -36,6 +46,7 @@ class User(db.Model):
     is_active = db.Column(db.Boolean, default=True)
 
 class Issue(db.Model):
+    __tablename__ = 'issues'
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(200), nullable=False)
     description = db.Column(db.Text)
@@ -47,16 +58,17 @@ class Issue(db.Model):
     accuracy = db.Column(db.Float)
     address = db.Column(db.String(255))
     image_url = db.Column(db.String(255))
-    reported_by = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    assigned_to = db.Column(db.Integer, db.ForeignKey('user.id'))
+    reported_by = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    assigned_to = db.Column(db.Integer, db.ForeignKey('users.id'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     resolved_at = db.Column(db.DateTime)
 
 class IssueUpdate(db.Model):
+    __tablename__ = 'issue_updates'
     id = db.Column(db.Integer, primary_key=True)
-    issue_id = db.Column(db.Integer, db.ForeignKey('issue.id'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    issue_id = db.Column(db.Integer, db.ForeignKey('issues.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     update_text = db.Column(db.Text)
     status_change = db.Column(db.String(50))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -410,9 +422,15 @@ def on_join_admin(data):
         emit('joined_admin', {'status': 'error'})
 
 # Initialize database
-with app.app_context():
-    db.create_all()
+@app.before_first_request
+def create_tables():
+    try:
+        db.create_all()
+        print("Database tables created successfully")
+    except Exception as e:
+        print(f"Error creating database tables: {e}")
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port, debug=True)
+    debug = os.environ.get('FLASK_ENV') == 'development'
+    socketio.run(app, host='0.0.0.0', port=port, debug=debug)
