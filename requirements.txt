@@ -10,3 +10,4 @@ PyJWT==2.8.0
 gunicorn==21.2.0
 python-socketio==5.10.0
 eventlet==0.33.3
+psycopg2-binary==2.9.7
