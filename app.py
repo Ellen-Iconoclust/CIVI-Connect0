@@ -15,7 +15,7 @@ import eventlet
 eventlet.monkey_patch()
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here-change-in-production')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', '7801569c25acac3e91f706aa340e1aaa08d00fae1834c9a53cc59539864f55a6')
 
 # Handle both SQLite and PostgreSQL database URLs
 database_url = os.environ.get('DATABASE_URL', 'sqlite:///civi_connect.db')
