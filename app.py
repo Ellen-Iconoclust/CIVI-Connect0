@@ -380,8 +380,10 @@ def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 
 # Initialize database
-@app.before_first_request
-def create_tables():
+# ... (all your existing routes and code above)
+
+# Initialize database
+with app.app_context():
     try:
         db.create_all()
         print("Database tables created successfully")
